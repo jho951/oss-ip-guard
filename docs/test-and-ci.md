@@ -14,19 +14,26 @@
 ./gradlew test
 ```
 
-모듈 단위 테스트:
-
-```bash
-./gradlew :ip-guard-core:test
-./gradlew :ip-guard-spi:test
-```
-
 ## 현재 테스트 범위
 
 - `ip-guard-core`
+  - `IpGuardsTest`
+    - string/list/path/resource factory entrypoints
   - `IpGuardEngineTest`
-- `ip-guard-spi`
+    - ordered match semantics
+    - fallback action
+    - strict hostname rejection
+    - IPv4 wildcard metadata
+    - IPv6 normalization
+  - `RuleParserTest`
+    - explicit action requirement
+    - line-aware parse errors
+    - invalid CIDR and descending range edge cases
   - `RuleSourceTest`
+    - single-method raw text contract
+  - `RuleSourcesTest`
+    - string/list/path/resource adapters
+    - source load failure reporting
 
 ## GitHub Actions
 

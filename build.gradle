@@ -1,177 +1,64 @@
-def requiredRootProp = { List<String> keys ->
-    def value = keys.collect { key ->
-        rootProject.findProperty(key)?.toString()?.trim()
-    }.find { it }
-
-    if (!value) {
-        throw new GradleException("Missing required property. Expected one of: ${keys.join(', ')}")
-    }
-    value
+plugins {
+    id "java-library"
+    id "io.github.jho951.oss-publishing" apply false
 }
 
-def optionalRootProp = { List<String> keys, String defaultValue = "" ->
-    keys.collect { key ->
-        rootProject.findProperty(key)?.toString()?.trim()
-    }.find { it } ?: defaultValue
+// -----------------------------------------------------------------------------
+// 1. Property Management
+// -----------------------------------------------------------------------------
+def getProp(String key) {
+    if (!key) throw new GradleException("Missing required property: ${key}")
+    return rootProject.findProperty(key)?.toString()?.trim()
 }
 
-def envOrRootProp = { String envName, List<String> propKeys = [], String defaultValue = "" ->
-    def envValue = System.getenv(envName)?.trim()
-    envValue ?: optionalRootProp(propKeys, defaultValue)
-}
-
-def normalizeSigningKey = { Object raw, String charset = "UTF-8" ->
-    def text = raw?.toString()?.trim()
-    if (!text) return ""
-
-    text = text.replace("\\r\\n", "\n").replace("\\n", "\n")
-    if (text.startsWith("-----BEGIN PGP PRIVATE KEY BLOCK-----")) {
-        return text
-    }
-
-    try {
-        return new String(text.decodeBase64(), charset).trim()
-    } catch (Exception ignored) {
-        return text
-    }
-}
-
-def modules = [
-        "ip-guard-spi": [
-                artifactId : "ip-guard-spi",
-                pomName    : "IP Guard SPI",
-                description: "SPI interfaces for the IP guard access-control stack."
-        ],
-        "ip-guard-core": [
-                artifactId : "ip-guard-core",
-                pomName    : "IP Guard Core",
-                description: "Framework-agnostic IP parsing, rule matching, and decision engine."
-        ],
+ext.config = [
+        group        : getProp("release_group"),
+        version      : getProp("release_version"),
+        javaVersion  : getProp("java_version").toInteger(),
+        encoding     : getProp("encoding"),
+        junitVersion : getProp("junit_version"),
+        githubOrg    : getProp("github_org"),
+        githubRepo   : getProp("github_repo")
 ]
 
-group = requiredRootProp(['release_group'])
-version = requiredRootProp(['release_version'])
+group = config.group
+version = config.version
 
-ext {
-    buildConfig = [
-            javaVersion : requiredRootProp(['java_version']).toInteger(),
-            junitVersion : optionalRootProp(['junit_version'], '5.10.0'),
-            encoding    : optionalRootProp(['encoding', 'encoding_method'], 'UTF-8'),
-            githubOrg   : requiredRootProp(['github_org']),
-            githubRepo  : requiredRootProp(['github_repo']),
-    ]
-    githubBaseUrl = "https://github.com/${buildConfig.githubOrg}/${buildConfig.githubRepo}"
+repositories {
+    mavenCentral()
 }
 
-allprojects {
-    group = rootProject.group
-    version = rootProject.version
-
-    repositories {
-        mavenCentral()
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(config.javaVersion)
     }
 }
 
-subprojects {
-    apply plugin: "java-library"
-
-    ext {
-        junitVer = rootProject.ext.buildConfig.junitVersion
-        encodingMethod = rootProject.ext.buildConfig.encoding
-    }
-
-    java {
-        toolchain {
-            languageVersion = JavaLanguageVersion.of(rootProject.ext.buildConfig.javaVersion)
-        }
-    }
-
-    tasks.withType(JavaCompile).configureEach {
-        options.release.set(rootProject.ext.buildConfig.javaVersion)
-        options.encoding = rootProject.ext.buildConfig.encoding
-    }
-
-    tasks.withType(Javadoc).configureEach {
-        options.addStringOption("Xdoclint:none", "-quiet")
-    }
-
-    dependencies {
-        testImplementation platform("org.junit:junit-bom:${rootProject.ext.buildConfig.junitVersion}")
-        testImplementation "org.junit.jupiter:junit-jupiter"
-        testRuntimeOnly "org.junit.platform:junit-platform-launcher"
-        testImplementation "org.assertj:assertj-core:3.24.2"
-    }
-
-    tasks.withType(Test).configureEach {
-        useJUnitPlatform()
-    }
+tasks.withType(JavaCompile).configureEach {
+    options.release = config.javaVersion
+    options.encoding = config.encoding
 }
 
-configure(subprojects.findAll { modules.containsKey(it.name) }) {
-    apply plugin: "maven-publish"
-    apply plugin: "signing"
-
-    def moduleMeta = modules[project.name]
-    def signingKey = normalizeSigningKey(
-            envOrRootProp(
-                    "MAVEN_CENTRAL_GPG_PRIVATE_KEY",
-                    ["mavenCentralSigningKey"]
-            ),
-            rootProject.ext.buildConfig.encoding
-    )
-    def signingPassword = envOrRootProp(
-            "MAVEN_CENTRAL_GPG_PASSPHRASE",
-            ["mavenCentralSigningPassword"]
-    )
-
-    java {
-        withSourcesJar()
-        withJavadocJar()
-    }
-
-    publishing {
-        publications {
-            create("mavenJava", MavenPublication) {
-                from components.java
-
-                groupId = project.group.toString()
-                artifactId = moduleMeta.artifactId
-                version = project.version.toString()
-
-                pom {
-                    name = moduleMeta.pomName
-                    description = moduleMeta.description
-                    url = rootProject.ext.githubBaseUrl
-
-                    licenses {
-                        license {
-                            name = "Apache License, Version 2.0"
-                            url = "https://www.apache.org/licenses/LICENSE-2.0"
-                        }
-                    }
-
-                    developers {
-                        developer {
-                            id = "jho951"
-                            name = "YJH (jho951)"
-                            url = "https://github.com/${rootProject.ext.buildConfig.githubOrg}"
-                        }
-                    }
-
-                    scm {
-                        connection = "scm:git:${rootProject.ext.githubBaseUrl}.git"
-                        developerConnection = "scm:git:ssh://git@github.com/${rootProject.ext.buildConfig.githubOrg}/${rootProject.ext.buildConfig.githubRepo}.git"
-                        url = rootProject.ext.githubBaseUrl
-                    }
-                }
-            }
-        }
-    }
-
-    signing {
-        if (signingKey) {
-            useInMemoryPgpKeys(signingKey, signingPassword)
-        }
-        sign publishing.publications
-    }
+tasks.withType(Javadoc).configureEach {
+    options.addStringOption("Xdoclint:none", "-quiet")
+    options.encoding = config.encoding
 }
+
+dependencies {
+    testImplementation platform("org.junit:junit-bom:${config.junitVersion}")
+    testImplementation "org.junit.jupiter:junit-jupiter"
+    testImplementation "org.assertj:assertj-core:3.24.2"
+    testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+}
+
+test {
+    useJUnitPlatform()
+}
+
+ext.ossPublishedModule = [
+        artifactId : "ip-guard-core",
+        pomName    : "IP Guard Core",
+        description: "Framework-agnostic IP parsing, rule matching, and decision engine."
+]
+
+apply plugin: "io.github.jho951.oss-publishing"
