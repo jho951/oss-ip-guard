@@ -28,6 +28,10 @@ def envOrProps(String envName, List<String> propKeys = [], String defaultValue =
     System.getenv(envName)?.trim() ?: optionalProps(propKeys, defaultValue)
 }
 
+def resolvePublishCredential = { String envName, List<String> propKeys = [], String defaultValue = "" ->
+    System.getenv(envName)?.trim() ?: optionalProps(propKeys, defaultValue)
+}
+
 def normalizeSigningKey(Object raw, String charset = "UTF-8") {
     String text = raw?.toString()?.trim()
     if (!text) {
@@ -176,8 +180,8 @@ signing {
 
 tasks.withType(PublishToMavenRepository).configureEach {
     doFirst {
-        String username = envOrProps("MAVEN_CENTRAL_USERNAME", ["mavenCentralUsername", "ossrhUsername"])
-        String password = envOrProps("MAVEN_CENTRAL_PASSWORD", ["mavenCentralPassword", "ossrhPassword"])
+        String username = resolvePublishCredential("MAVEN_CENTRAL_USERNAME", ["mavenCentralUsername", "ossrhUsername"])
+        String password = resolvePublishCredential("MAVEN_CENTRAL_PASSWORD", ["mavenCentralPassword", "ossrhPassword"])
 
         if (!username || !password) {
             throw new GradleException(
