@@ -1,6 +1,6 @@
-# Troubleshooting
+# 트러블슈팅
 
-`ip-guard`의 1계층 내부에서 자주 만나는 문제와 확인 순서입니다.
+이 문서는 `ip-guard-core`를 직접 통합하는 경우와, 상위 플랫폼이 내부에서 감싸는 경우에 공통으로 적용되는 확인 순서를 정리합니다.
 
 ## 1. 규칙이 적용되지 않는다
 
@@ -21,7 +21,7 @@
 - `RuleSource`가 기대한 규칙 원문을 반환하는지 확인합니다.
 - 입력 IP가 `IpParser` 기준으로 정상 파싱되는지 확인합니다.
 - `Decision.reason()`이 `MATCHED_RULE`인지 `FALLBACK`인지 먼저 구분합니다.
-- `matchedRule.lineNumber()`와 `matchedRule.expression()`으로 어떤 규칙이 먼저 먹혔는지 확인합니다.
+- `matchedRule.lineNumber()`와 `matchedRule.expression()`으로 어떤 규칙이 먼저 적용됐는지 확인합니다.
 
 ## 4. `INVALID_IP`가 나온다
 
@@ -67,7 +67,13 @@
 - 규칙 기반 판정이면 `matchedRule`이 존재하고, fallback 또는 invalid input이면 비어 있습니다.
 - `normalizedIp`는 입력 원문이 아니라 엔진이 사용한 정규화 결과입니다.
 
-## 10. 먼저 확인할 파일
+## 10. 상위 플랫폼이 감싸는 구조에서만 문제처럼 보인다
+
+- 최종 애플리케이션이 넘긴 규칙 목록이 중간 계층에서 변형되지 않았는지 확인합니다.
+- 상위 플랫폼이 `X-Forwarded-For` 처리나 trusted proxy 정책을 잘못 적용한 것은 아닌지 확인합니다.
+- 상위 플랫폼이 자체 CIDR matcher나 축소 문법으로 우회 구현하고 있지 않은지 확인합니다.
+
+## 11. 먼저 확인할 파일
 
 - [`src/main/java/com/ipguard/core/engine/IpGuardEngine.java`](../src/main/java/com/ipguard/core/engine/IpGuardEngine.java)
 - [`src/main/java/com/ipguard/core/engine/IpGuards.java`](../src/main/java/com/ipguard/core/engine/IpGuards.java)

@@ -1,8 +1,10 @@
-# Extension Guide
+# 확장 가이드
+
+먼저 전제부터 분명히 합니다. `ip-guard`는 대부분 "확장"보다 "조합"으로 사용하는 쪽이 단순합니다.
 
 ## 먼저 확인할 것
 
-커스텀 로딩이 필요하지 않다면 `RuleSource`를 직접 구현하기 전에 built-in adapter를 먼저 검토합니다.
+커스텀 로딩이 필요하지 않다면 `RuleSource`를 직접 구현하기 전에 내장 어댑터를 먼저 검토합니다.
 
 - `RuleSources.fromString(...)`
 - `RuleSources.fromLines(...)`
@@ -10,6 +12,21 @@
 - `RuleSources.fromResource(...)`
 
 애플리케이션에서 바로 엔진이 필요하면 `IpGuards`를 통해 같은 입력 경로로 바로 `IpGuardEngine`을 생성할 수 있습니다.
+
+## `RuleSource`를 직접 구현해야 하는 경우
+
+아래처럼 규칙 원문이 파일이나 resource가 아닌 다른 저장소에 있을 때만 `RuleSource` 구현을 고려합니다.
+
+- 데이터베이스
+- 원격 설정 저장소
+- 암호화된 설정 파일
+- 사내 설정 시스템
+
+핵심 원칙:
+
+- `RuleSource`는 raw text만 반환합니다.
+- rule parsing이나 매칭 책임을 `RuleSource` 안으로 넣지 않습니다.
+- 가능하면 `allow|deny + expression` 형태의 원문을 그대로 반환합니다.
 
 ## 새 규칙 타입 추가
 

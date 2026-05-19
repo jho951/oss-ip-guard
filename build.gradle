@@ -1,7 +1,10 @@
 plugins {
     id "java-library"
-    id "io.github.jho951.oss-publishing" apply false
+    id "maven-publish"
+    id "signing"
 }
+
+import org.gradle.api.publish.maven.tasks.PublishToMavenRepository
 
 // -----------------------------------------------------------------------------
 // 1. Property Management
@@ -9,6 +12,48 @@ plugins {
 def getProp(String key) {
     if (!key) throw new GradleException("Missing required property: ${key}")
     return rootProject.findProperty(key)?.toString()?.trim()
+}
+
+def optionalProp(String key, String defaultValue = "") {
+    rootProject.findProperty(key)?.toString()?.trim() ?: defaultValue
+}
+
+def optionalProps(List<String> keys, String defaultValue = "") {
+    keys.collect { key ->
+        rootProject.findProperty(key)?.toString()?.trim()
+    }.find { it } ?: defaultValue
+}
+
+def envOrProps(String envName, List<String> propKeys = [], String defaultValue = "") {
+    System.getenv(envName)?.trim() ?: optionalProps(propKeys, defaultValue)
+}
+
+def normalizeSigningKey(Object raw, String charset = "UTF-8") {
+    String text = raw?.toString()?.trim()
+    if (!text) {
+        return ""
+    }
+
+    String normalized = text
+        .replace("\\r\\n", "\n")
+        .replace("\\n", "\n")
+
+    if (normalized.startsWith("-----BEGIN PGP PRIVATE KEY BLOCK-----")) {
+        return normalized
+    }
+
+    try {
+        return new String(normalized.decodeBase64(), charset).trim()
+    } catch (Exception ignored) {
+        return normalized
+    }
+}
+
+def isExternalPublishTaskRequested() {
+    gradle.startParameter.taskNames.any { taskName ->
+        String normalized = taskName.toLowerCase()
+        normalized.contains("publish") && !normalized.contains("mavenlocal")
+    }
 }
 
 ext.config = [
@@ -24,6 +69,16 @@ ext.config = [
 group = config.group
 version = config.version
 
+def githubBaseUrl = "https://github.com/${config.githubOrg}/${config.githubRepo}"
+def signingKey = normalizeSigningKey(
+    envOrProps("MAVEN_CENTRAL_GPG_PRIVATE_KEY", ["mavenCentralSigningKey", "signingKey"]),
+    config.encoding
+)
+def signingPassword = envOrProps(
+    "MAVEN_CENTRAL_GPG_PASSPHRASE",
+    ["mavenCentralSigningPassword", "signingPassword"]
+)
+
 repositories {
     mavenCentral()
 }
@@ -32,6 +87,8 @@ java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(config.javaVersion)
     }
+    withSourcesJar()
+    withJavadocJar()
 }
 
 tasks.withType(JavaCompile).configureEach {
@@ -61,4 +118,81 @@ ext.ossPublishedModule = [
         description: "Framework-agnostic IP parsing, rule matching, and decision engine."
 ]
 
-apply plugin: "io.github.jho951.oss-publishing"
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+            groupId = project.group.toString()
+            artifactId = ossPublishedModule.artifactId
+            version = project.version.toString()
+
+            pom {
+                name.set(ossPublishedModule.pomName)
+                description.set(ossPublishedModule.description)
+                url.set(githubBaseUrl)
+
+                licenses {
+                    license {
+                        name.set(optionalProp("pom_license_name", "The Apache License, Version 2.0"))
+                        url.set(optionalProp("pom_license_url", "https://www.apache.org/licenses/LICENSE-2.0.txt"))
+                    }
+                }
+
+                developers {
+                    developer {
+                        id.set(optionalProp("pom_developer_id", "jho951"))
+                        name.set(optionalProp("pom_developer_name", "YJH (jho951)"))
+
+                        String developerEmail = optionalProp("pom_developer_email", "jho951@naver.com")
+                        if (developerEmail) {
+                            email.set(developerEmail)
+                        }
+
+                        url.set(optionalProp("pom_developer_url", "https://github.com/${config.githubOrg}"))
+                    }
+                }
+
+                scm {
+                    connection.set("scm:git:${githubBaseUrl}.git")
+                    developerConnection.set("scm:git:ssh://git@github.com/${config.githubOrg}/${config.githubRepo}.git")
+                    url.set(githubBaseUrl)
+                }
+            }
+        }
+    }
+}
+
+signing {
+    required {
+        isExternalPublishTaskRequested()
+    }
+
+    if (signingKey) {
+        useInMemoryPgpKeys(signingKey, signingPassword)
+    }
+
+    sign publishing.publications
+}
+
+tasks.withType(PublishToMavenRepository).configureEach {
+    doFirst {
+        String username = envOrProps("MAVEN_CENTRAL_USERNAME", ["mavenCentralUsername", "ossrhUsername"])
+        String password = envOrProps("MAVEN_CENTRAL_PASSWORD", ["mavenCentralPassword", "ossrhPassword"])
+
+        if (!username || !password) {
+            throw new GradleException(
+                "Missing Maven Central credentials. " +
+                "Set MAVEN_CENTRAL_USERNAME/MAVEN_CENTRAL_PASSWORD " +
+                "(or mavenCentralUsername/mavenCentralPassword)."
+            )
+        }
+
+        if (!signingKey) {
+            throw new GradleException(
+                "Missing signing key. " +
+                "Set MAVEN_CENTRAL_GPG_PRIVATE_KEY " +
+                "(or mavenCentralSigningKey/signingKey)."
+            )
+        }
+    }
+}

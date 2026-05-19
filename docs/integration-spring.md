@@ -1,4 +1,6 @@
-# Spring Integration
+# Spring 통합
+
+이 문서는 `ip-guard-core`를 애플리케이션이 직접 의존하는 경우를 기준으로 설명합니다.
 
 Spring에서도 역할은 같습니다. 요청 IP 추출은 웹 계층에서 처리하고, `ip-guard-core`는 순수 판정만 담당하게 둡니다.
 
@@ -60,6 +62,12 @@ public final class IpGuardFilter extends OncePerRequestFilter {
 	}
 }
 ```
+
+## 책임 분리
+
+- Spring Bean은 엔진 생성과 수명주기를 관리합니다.
+- Filter는 request에서 최종 클라이언트 IP 문자열을 추출합니다.
+- `ip-guard-core`는 그 문자열만 받아 allow/deny와 metadata를 반환합니다.
 
 ## 운영 가이드
 
